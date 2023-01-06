@@ -1,3 +1,5 @@
+mod rules;
+
 use clap::clap_derive::Parser;
 use regex::Regex;
 use std::io::{BufRead, BufReader};
@@ -36,6 +38,9 @@ pub struct Summary {
 }
 
 pub fn filter_streams(stdout: BufReader<ChildStdout>) -> Result<Summary, Box<dyn std::error::Error>> {
+    // TODO: actually do something with the loaded rules
+    let _rules = rules::load_rules(include_str!("../rules.yml"))?;
+
     // TODO: refactor to threads and channels to handle concurrent streams
     let mut buffer = Vec::new();
     let mut lines_redacted = 0;

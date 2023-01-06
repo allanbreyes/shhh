@@ -1,0 +1,11 @@
+---
+version: 1
+rules:
+  - id: private-ssh-key
+    mode: multiline-regex
+    pattern-start: "-----BEGIN .* PRIVATE KEY-----"
+    pattern-mid: "@[a-zA-Z0-9+/]+={,2}"
+    pattern-end: "-----END .* PRIVATE KEY-----"
+  - id: github-classic-personal-access-token
+    mode: regex
+    pattern: "^ghp_[a-zA-Z0-9]{36}$"
