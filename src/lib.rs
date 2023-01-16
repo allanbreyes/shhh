@@ -1,7 +1,7 @@
 mod rules;
 
 use clap::clap_derive::Parser;
-use regex::Regex;
+
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio, ChildStdout};
 
@@ -38,35 +38,55 @@ pub struct Summary {
 }
 
 pub fn filter_streams(stdout: BufReader<ChildStdout>) -> Result<Summary, Box<dyn std::error::Error>> {
-    // TODO: actually do something with the loaded rules
-    let _rules = rules::load_rules(include_str!("../rules.yml"))?;
+    let rules = rules::load_rules(include_str!("../rules.yml"))?;
 
     // TODO: refactor to threads and channels to handle concurrent streams
     let mut buffer = Vec::new();
     let mut lines_redacted = 0;
 
-    // TODO: evaluate multiple rules
-    let mut in_sensitive_block = false;
-    let ssh_key_start = Regex::new(r"-----BEGIN .* PRIVATE KEY-----")?;
-    let ssh_key_end = Regex::new(r"-----END .* PRIVATE KEY-----")?;
+    let mut activated_multiline_rules: Vec<&str> = Vec::new();
 
     for line in stdout.lines() {
-        let line = line?;
-        if ssh_key_start.is_match(line.as_str()) {
-            buffer.push(String::from("*** SSH private key ***"));
-            lines_redacted += 1;
-            in_sensitive_block = true;
-        } else if in_sensitive_block {
-            buffer.push(String::from("*** SSH private key ***"));
-            lines_redacted += 1;
-            if ssh_key_end.is_match(line.as_str()) {
-                for line in &buffer {
-                    println!("{}", line);
-                }
-                in_sensitive_block = false;
+        let mut line = line?;
+        let mut redacted = false;
+        for rule in &rules {
+            if rule.is_start(&line) {
+                activated_multiline_rules.push(rule.id());
+                line = rule.replace_start(&line);
+                redacted = true;
             }
-        } else {
-            println!("{}", line);
+            if rule.is_end(&line) {
+                let mut popped = false;
+                activated_multiline_rules.retain(|&x| {
+                    if popped || x != rule.id() {
+                        true
+                    } else {
+                        popped = true;
+                        false
+                    }
+                });
+                line = rule.replace_end(&line);
+                redacted = true;
+            }
+            if activated_multiline_rules.contains(&rule.id()) {
+                line = rule.replace(&line);
+                redacted = true;
+            } else if rule.is_match(&line) {
+                line = rule.replace(&line);
+                redacted = true;
+            }
+        }
+        buffer.push(line);
+
+        if redacted {
+            lines_redacted += 1;
+        }
+
+        if activated_multiline_rules.is_empty() {
+            for line in &buffer {
+                println!("{}", line);
+            }
+            buffer.clear();
         }
     }
 
